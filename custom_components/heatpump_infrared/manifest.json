@@ -4,7 +4,7 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["infrared"],
-  "documentation": "https://github.com/ToniA/arduino-heatpumpir",
+  "documentation": "https://github.com/feiming/homeassistant-heatpump",
   "integration_type": "device",
   "iot_class": "assumed_state",
   "requirements": ["infrared-protocols>=6.3.0"],

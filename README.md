@@ -42,7 +42,7 @@ Control split-system heat pumps and air conditioners via IR blaster from Home As
 ### HACS (recommended)
 
 1. In HACS, go to **Integrations** → click the three-dot menu → **Custom repositories**
-2. Add this repository URL and select category **Integration**
+2. Add `https://github.com/feiming/homeassistant-heatpump` and select category **Integration**
 3. Click **Download** on the **Heatpump Infrared** card
 4. Restart Home Assistant
 
