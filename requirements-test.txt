@@ -1,0 +1,2 @@
+infrared-protocols>=6.3.0
+pytest>=8.0

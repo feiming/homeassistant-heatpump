@@ -1,0 +1,12 @@
+{
+  "domain": "heatpump_infrared",
+  "name": "Heatpump Infrared",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["infrared"],
+  "documentation": "https://github.com/ToniA/arduino-heatpumpir",
+  "integration_type": "device",
+  "iot_class": "assumed_state",
+  "requirements": ["infrared-protocols>=6.3.0"],
+  "version": "1.0.0"
+}

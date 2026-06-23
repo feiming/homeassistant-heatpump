@@ -1,0 +1,22 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This device has already been configured with this infrared emitter.",
+      "no_infrared_entities": "[%key:common::config_flow::abort::no_infrared_entities%]"
+    },
+    "step": {
+      "user": {
+        "title": "Set up Heatpump Infrared",
+        "description": "Select your heat pump model and the infrared emitter that will control it.",
+        "data": {
+          "model": "Heat pump model",
+          "infrared_entity_id": "[%key:common::config_flow::data::infrared_entity_id%]"
+        },
+        "data_description": {
+          "model": "The brand and model of your heat pump unit.",
+          "infrared_entity_id": "[%key:common::config_flow::data_description::infrared_entity_id%]"
+        }
+      }
+    }
+  }
+}
