@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#1a1a2e"/>
+
+  <!-- ── SPLIT AC UNIT ── -->
+  <!-- Wall rail -->
+  <rect x="56" y="100" width="400" height="14" rx="7" fill="white" opacity="0.15"/>
+
+  <!-- Unit body -->
+  <rect x="56" y="110" width="400" height="130" rx="20" fill="white" opacity="0.9" filter="url(#shadow)"/>
+
+  <!-- Face panel -->
+  <rect x="68" y="120" width="376" height="110" rx="14" fill="white" opacity="0.75"/>
+
+  <!-- Intake grille lines -->
+  <line x1="86" y1="134" x2="436" y2="134" stroke="#1a1a2e" stroke-width="2.5" opacity="0.2"/>
+  <line x1="86" y1="148" x2="436" y2="148" stroke="#1a1a2e" stroke-width="2.5" opacity="0.2"/>
+  <line x1="86" y1="162" x2="436" y2="162" stroke="#1a1a2e" stroke-width="2.5" opacity="0.2"/>
+
+  <!-- Bottom flap / air outlet -->
+  <path d="M 72 218 Q 256 244 440 218 L 440 236 Q 256 262 72 236 Z"
+        fill="white" opacity="0.6"/>
+  <!-- Louvre slats -->
+  <line x1="114" y1="224" x2="114" y2="240" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="162" y1="228" x2="162" y2="245" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="210" y1="230" x2="210" y2="248" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="256" y1="231" x2="256" y2="249" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="302" y1="230" x2="302" y2="248" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="350" y1="228" x2="350" y2="245" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  <line x1="398" y1="224" x2="398" y2="240" stroke="#1a1a2e" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Control panel strip (right) -->
+  <rect x="352" y="172" width="80" height="52" rx="8" fill="white" opacity="0.5"/>
+  <!-- Power LED -->
+  <circle cx="376" cy="188" r="8" fill="white" opacity="0.95"/>
+  <!-- Mini display -->
+  <rect x="358" y="202" width="68" height="16" rx="4" fill="#1a1a2e" opacity="0.4"/>
+
+  <!-- ── IR / LIGHT WAVES emanating downward from unit ── -->
+  <!-- Wave 1 — largest, top -->
+  <path d="M 80 310 Q 256 268 432 310"
+        fill="none" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.85"/>
+  <!-- Wave 2 — medium -->
+  <path d="M 138 368 Q 256 326 374 368"
+        fill="none" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+  <!-- Wave 3 — smallest, bottom -->
+  <path d="M 192 420 Q 256 382 320 420"
+        fill="none" stroke="white" stroke-width="4" stroke-linecap="round" opacity="0.28"/>
+
+  <!-- Emitter dot — center bottom of unit -->
+  <circle cx="256" cy="262" r="10" fill="white" opacity="0.95"/>
+
+  <!-- ── REMOTE TOP (peeking from bottom) ── -->
+  <!-- Body top -->
+  <rect x="216" y="456" width="80" height="80" rx="22" fill="white" opacity="0.25"/>
+  <!-- Face highlight -->
+  <rect x="221" y="461" width="70" height="75" rx="18" fill="white" opacity="0.1"/>
+  <!-- IR emitter -->
+  <ellipse cx="256" cy="468" rx="10" ry="7" fill="#1a1a2e" opacity="0.5"/>
+  <ellipse cx="256" cy="468" rx="5" ry="3.5" fill="white" opacity="0.9"/>
+</svg>
