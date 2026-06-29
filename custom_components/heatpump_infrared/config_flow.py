@@ -22,7 +22,6 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import CONF_INFRARED_ENTITY_ID, CONF_MODEL, DOMAIN
-from .ir import MODELS
 
 
 class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -34,6 +33,8 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
+        from .ir import MODELS  # noqa: PLC0415 — deferred to avoid import-time infrared_protocols dependency
+
         emitter_entity_ids = async_get_emitters(self.hass)
         if not emitter_entity_ids:
             return self.async_abort(reason="no_infrared_entities")
