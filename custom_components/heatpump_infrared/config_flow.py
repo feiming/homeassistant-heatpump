@@ -21,7 +21,14 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
-from .const import CONF_INFRARED_ENTITY_ID, CONF_MODEL, DOMAIN
+from .const import (
+    CONF_DEVICE_TYPE,
+    CONF_INFRARED_ENTITY_ID,
+    CONF_MODEL,
+    DEVICE_TYPE_CLIMATE,
+    DEVICE_TYPE_FAN,
+    DOMAIN,
+)
 
 
 class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -33,11 +40,14 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
-        from .ir import MODELS  # noqa: PLC0415 — deferred to avoid import-time infrared_protocols dependency
+        from .ir import FAN_MODELS, MODELS  # noqa: PLC0415 — deferred to avoid import-time infrared_protocols dependency
 
         emitter_entity_ids = async_get_emitters(self.hass)
         if not emitter_entity_ids:
             return self.async_abort(reason="no_infrared_entities")
+
+        fan_model_ids = {model_id for _, model_id, _ in FAN_MODELS}
+        all_models = list(MODELS) + list(FAN_MODELS)
 
         errors: dict[str, str] = {}
 
@@ -57,15 +67,21 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Find the display name for the chosen model
             display_name = next(
-                (dn for _, mid, dn in MODELS if mid == model_id), model_id
+                (dn for _, mid, dn in all_models if mid == model_id), model_id
+            )
+
+            device_type = (
+                DEVICE_TYPE_FAN if model_id in fan_model_ids else DEVICE_TYPE_CLIMATE
             )
 
             title = f"{display_name} via {emitter_name}"
-            return self.async_create_entry(title=title, data=user_input)
+            return self.async_create_entry(
+                title=title, data={**user_input, CONF_DEVICE_TYPE: device_type}
+            )
 
         model_options = [
             SelectOptionDict(value=model_id, label=f"{brand} – {display_name}")
-            for brand, model_id, display_name in MODELS
+            for brand, model_id, display_name in all_models
         ]
 
         schema = vol.Schema(

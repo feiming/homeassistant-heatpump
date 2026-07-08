@@ -48,6 +48,7 @@ from .panasonic import (
     PanasonicLKEHeatpumpIR,
     PanasonicNKEHeatpumpIR,
 )
+from .panasonic_fan import PanasonicCeilingFanIR
 from .philco import PhilcoPHS32HeatpumpIR
 from .samsung import SamsungAQVHeatpumpIR, SamsungFJMHeatpumpIR
 from .sharp import IVTHeatpumpIR, SharpHeatpumpIR
@@ -57,6 +58,9 @@ __all__ = [
     "MODELS",
     "create_model",
     "HeatpumpIRBase",
+    "FAN_MODELS",
+    "create_fan_model",
+    "PanasonicCeilingFanIR",
 ]
 
 # Registry mapping model_id → implementation class
@@ -193,4 +197,28 @@ def create_model(model_id: str) -> HeatpumpIRBase:
     Raises KeyError if the model is unknown.
     """
     cls = _REGISTRY[model_id]
+    return cls()
+
+
+# ---------------------------------------------------------------------------
+# Fan models (separate from the climate registry above — a fan is not a
+# HeatpumpIRBase and has its own single-argument get_command(speed)).
+# ---------------------------------------------------------------------------
+
+_FAN_REGISTRY: dict[str, type[PanasonicCeilingFanIR]] = {
+    "panasonic_ceiling_fan": PanasonicCeilingFanIR,
+}
+
+# Ordered list of (brand, model_id, display_name) used in the config flow
+FAN_MODELS: list[tuple[str, str, str]] = [
+    ("Panasonic", "panasonic_ceiling_fan", "Panasonic Ceiling Fan"),
+]
+
+
+def create_fan_model(model_id: str) -> PanasonicCeilingFanIR:
+    """Instantiate a fan model implementation by ID.
+
+    Raises KeyError if the model is unknown.
+    """
+    cls = _FAN_REGISTRY[model_id]
     return cls()

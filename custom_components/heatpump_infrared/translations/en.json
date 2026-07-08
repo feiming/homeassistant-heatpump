@@ -7,13 +7,13 @@
     "step": {
       "user": {
         "title": "Set up HeatpumpIR",
-        "description": "Select your heat pump model and the infrared emitter that will control it.",
+        "description": "Select your heat pump or fan model and the infrared emitter that will control it.",
         "data": {
-          "model": "Heat pump model",
+          "model": "Device model",
           "infrared_entity_id": "Infrared emitter"
         },
         "data_description": {
-          "model": "The brand and model of your heat pump unit.",
+          "model": "The brand and model of your heat pump or fan unit.",
           "infrared_entity_id": "The infrared emitter entity to use for sending commands."
         }
       }
