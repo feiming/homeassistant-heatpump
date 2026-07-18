@@ -114,4 +114,8 @@ Tests cover all 47 models: correct command generation, timing alternation, 38 kH
 
 ## Credits
 
-IR protocols ported from [ToniA/arduino-heatpumpir](https://github.com/ToniA/arduino-heatpumpir) (MIT).
+IR protocols ported from [ToniA/arduino-heatpumpir](https://github.com/ToniA/arduino-heatpumpir) (GPL-2.0).
+
+## License
+
+GPL-2.0, inherited from the upstream arduino-heatpumpir project. See [LICENSE](LICENSE).
