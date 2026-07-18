@@ -6,6 +6,7 @@
   "dependencies": ["infrared"],
   "documentation": "https://github.com/feiming/homeassistant-heatpump",
   "integration_type": "device",
+  "issue_tracker": "https://github.com/feiming/homeassistant-heatpump/issues",
   "iot_class": "assumed_state",
   "requirements": ["infrared-protocols>=6.3.0"],
   "version": "1.1.1"
