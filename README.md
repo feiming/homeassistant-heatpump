@@ -61,6 +61,7 @@ Control split-system heat pumps and air conditioners via IR blaster from Home As
         ├── manifest.json
         ├── strings.json
         ├── translations/
+        ├── brand/
         └── ir/
 ```
 
@@ -73,6 +74,16 @@ Control split-system heat pumps and air conditioners via IR blaster from Home As
 3. Select your heat pump brand and model from the dropdown
 4. Select the IR blaster entity that will send the commands
 5. Click **Submit** — a climate entity appears immediately
+
+## Feedback temperature sensor (optional)
+
+IR blasters are one-way — there's no confirmation the unit actually received or acted on a command. To get some visual feedback, you can point the climate entity at an external temperature sensor near the unit:
+
+1. Go to **Settings → Devices & Services**, find the Heatpump Infrared entry, and click **Configure**
+2. Select a temperature sensor entity (e.g. from a smart plug, thermostat, or standalone sensor)
+3. Its reading is shown as the climate entity's current temperature, so you can watch the room respond after sending a command
+
+Leave the field blank to disable this (the default).
 
 ## Usage
 
