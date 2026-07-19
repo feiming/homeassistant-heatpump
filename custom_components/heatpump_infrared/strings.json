@@ -18,5 +18,19 @@
         }
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Heatpump Infrared options",
+        "description": "IR emitters send commands one-way, so there's no built-in confirmation that the unit responded. Optionally point this at a temperature sensor near the unit so its reading is shown as the current temperature — giving you feedback that the unit is actually reacting.",
+        "data": {
+          "temperature_sensor_entity_id": "Feedback temperature sensor"
+        },
+        "data_description": {
+          "temperature_sensor_entity_id": "A sensor entity reporting the room temperature near this unit. Leave blank to disable."
+        }
+      }
+    }
   }
 }

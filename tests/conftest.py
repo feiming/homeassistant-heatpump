@@ -29,25 +29,57 @@ class _UnitOfTemperature:
 _mod("homeassistant.const",
      Platform=_Platform,
      ATTR_TEMPERATURE="temperature",
+     STATE_UNKNOWN="unknown",
+     STATE_UNAVAILABLE="unavailable",
      UnitOfTemperature=_UnitOfTemperature)
 
 # ── homeassistant.core ────────────────────────────────────────────────────
 class _HomeAssistant: pass
 
-_mod("homeassistant.core", HomeAssistant=_HomeAssistant)
+class _State:
+    def __init__(self, state, attributes=None):
+        self.state = state
+        self.attributes = attributes or {}
+
+class _Event:
+    def __init__(self, data=None):
+        self.data = data or {}
+
+class _EventStateChangedData: pass
+
+def _callback(func):
+    """Identity decorator, matching homeassistant.core.callback."""
+    return func
+
+_mod("homeassistant.core",
+     HomeAssistant=_HomeAssistant,
+     State=_State,
+     Event=_Event,
+     EventStateChangedData=_EventStateChangedData,
+     callback=_callback)
 
 # ── homeassistant.config_entries ──────────────────────────────────────────
 class _ConfigEntry:
     entry_id = "test"
     data = {}
+    options = {}
 
 class _ConfigFlow: pass
 class _ConfigFlowResult: pass
+class _OptionsFlowWithConfigEntry:
+    def __init__(self, config_entry):
+        self._config_entry = config_entry
+        self.options = dict(config_entry.options)
+
+    @property
+    def config_entry(self):
+        return self._config_entry
 
 _mod("homeassistant.config_entries",
      ConfigEntry=_ConfigEntry,
      ConfigFlow=_ConfigFlow,
-     ConfigFlowResult=_ConfigFlowResult)
+     ConfigFlowResult=_ConfigFlowResult,
+     OptionsFlowWithConfigEntry=_OptionsFlowWithConfigEntry)
 
 # ── homeassistant.components.climate ─────────────────────────────────────
 class _ClimateEntityFeature:
@@ -100,6 +132,8 @@ class _RestoreEntity:
 _mod("homeassistant.helpers.restore_state", RestoreEntity=_RestoreEntity)
 _mod("homeassistant.helpers.entity_platform",
      AddConfigEntryEntitiesCallback=object)
+_mod("homeassistant.helpers.event",
+     async_track_state_change_event=lambda hass, entity_ids, cb: (lambda: None))
 _mod("homeassistant.helpers.device_registry", DeviceInfo=dict)
 _mod("homeassistant.helpers.entity_registry", async_get=lambda hass: None)
 _mod("homeassistant.helpers.selector",
@@ -118,3 +152,4 @@ _mod("homeassistant")
 vol = _mod("voluptuous")
 vol.Schema = lambda x, **kw: x
 vol.Required = lambda x, **kw: x
+vol.Optional = lambda x, **kw: x

@@ -20,12 +20,29 @@ from homeassistant.components.climate import (
 )
 from homeassistant.components.infrared import InfraredEmitterConsumerEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    ATTR_TEMPERATURE,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfTemperature,
+)
+from homeassistant.core import (
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CONF_INFRARED_ENTITY_ID, CONF_MODEL, DOMAIN
+from .const import (
+    CONF_INFRARED_ENTITY_ID,
+    CONF_MODEL,
+    CONF_TEMPERATURE_SENSOR_ID,
+    DOMAIN,
+)
 from .ir import create_model
 from .ir.base import (
     FAN_1,
@@ -146,6 +163,9 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         """Initialize the climate entity."""
         self._model = model
         self._infrared_emitter_entity_id = infrared_entity_id
+        self._temperature_sensor_entity_id = entry.options.get(
+            CONF_TEMPERATURE_SENSOR_ID
+        )
 
         self._attr_unique_id = entry.entry_id
         from homeassistant.helpers.device_registry import DeviceInfo
@@ -166,10 +186,24 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         self._attr_target_temperature = 22.0
         self._attr_fan_mode = FAN_AUTO
         self._attr_swing_mode = SWING_OFF
+        self._attr_current_temperature = None
 
     async def async_added_to_hass(self) -> None:
         """Restore last known state when HA starts."""
         await super().async_added_to_hass()
+
+        if self._temperature_sensor_entity_id:
+            self._update_current_temperature(
+                self.hass.states.get(self._temperature_sensor_entity_id)
+            )
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    [self._temperature_sensor_entity_id],
+                    self._handle_temperature_sensor_change,
+                )
+            )
+
         last = await self.async_get_last_state()
         if last is None:
             return
@@ -189,6 +223,27 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
 
         if (swing := attrs.get("swing_mode")) and swing in self._attr_swing_modes:
             self._attr_swing_mode = swing
+
+    @callback
+    def _handle_temperature_sensor_change(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
+        """Update current_temperature from the feedback sensor's new state."""
+        self._update_current_temperature(event.data["new_state"])
+        self.async_write_ha_state()
+
+    def _update_current_temperature(self, state: State | None) -> None:
+        """Set current_temperature from a sensor state, ignoring bad readings."""
+        if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        try:
+            self._attr_current_temperature = float(state.state)
+        except ValueError:
+            _LOGGER.warning(
+                "Feedback sensor %s has a non-numeric state: %s",
+                self._temperature_sensor_entity_id,
+                state.state,
+            )
 
     # ------------------------------------------------------------------
     # Setters — each updates local state and sends the full IR command
