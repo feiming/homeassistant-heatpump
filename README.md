@@ -83,6 +83,8 @@ IR blasters are one-way — there's no confirmation the unit actually received o
 2. Select a temperature sensor entity (e.g. from a smart plug, thermostat, or standalone sensor)
 3. Its reading is shown as the climate entity's current temperature, so you can watch the room respond after sending a command
 
+With a sensor configured, the entity also derives an `hvac_action` (`heating`/`cooling`/`idle`) by comparing that reading to the target temperature — this is a heuristic, not a real measurement, but it drives the thermostat card's active/idle indicator. Without a sensor, `hvac_action` is left unset.
+
 Leave the field blank to disable this (the default).
 
 ## Usage

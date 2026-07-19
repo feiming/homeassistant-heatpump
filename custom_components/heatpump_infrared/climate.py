@@ -16,6 +16,7 @@ from homeassistant.components.climate import (
     SWING_VERTICAL,
     ClimateEntity,
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.components.infrared import InfraredEmitterConsumerEntity
@@ -69,6 +70,10 @@ from .ir.base import (
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
+
+# Tolerance (°C) around the target before the feedback-sensor heuristic
+# considers the target reached and reports IDLE instead of HEATING/COOLING.
+_ACTION_DEADBAND = 0.3
 
 # HA fan mode → internal IR fan constant
 _HA_FAN_TO_IR: dict[str, int] = {
@@ -244,6 +249,52 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
                 self._temperature_sensor_entity_id,
                 state.state,
             )
+
+    @property
+    def hvac_action(self) -> HVACAction | None:
+        """Best-effort action, derived by comparing the feedback sensor to the target.
+
+        IR emitters give no real confirmation, so this is a heuristic, not a
+        measurement: it assumes the unit is actively heating/cooling whenever
+        the feedback sensor hasn't yet reached the target (within a small
+        deadband), and idle once it has.
+        """
+        if self._attr_hvac_mode == HVACMode.OFF:
+            return HVACAction.OFF
+
+        if (
+            self._temperature_sensor_entity_id is None
+            or self._attr_current_temperature is None
+        ):
+            return None
+
+        current = self._attr_current_temperature
+        target = self._attr_target_temperature
+
+        if self._attr_hvac_mode == HVACMode.COOL:
+            return (
+                HVACAction.COOLING
+                if current > target + _ACTION_DEADBAND
+                else HVACAction.IDLE
+            )
+        if self._attr_hvac_mode == HVACMode.HEAT:
+            return (
+                HVACAction.HEATING
+                if current < target - _ACTION_DEADBAND
+                else HVACAction.IDLE
+            )
+        if self._attr_hvac_mode == HVACMode.HEAT_COOL:
+            if current > target + _ACTION_DEADBAND:
+                return HVACAction.COOLING
+            if current < target - _ACTION_DEADBAND:
+                return HVACAction.HEATING
+            return HVACAction.IDLE
+        if self._attr_hvac_mode == HVACMode.DRY:
+            return HVACAction.DRYING
+        if self._attr_hvac_mode == HVACMode.FAN_ONLY:
+            return HVACAction.FAN
+
+        return None
 
     # ------------------------------------------------------------------
     # Setters — each updates local state and sends the full IR command

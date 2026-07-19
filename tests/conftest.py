@@ -97,6 +97,14 @@ class _HVACMode:
     FAN_ONLY = "fan_only"
     HEAT_COOL = "heat_cool"
 
+class _HVACAction:
+    OFF = "off"
+    IDLE = "idle"
+    HEATING = "heating"
+    COOLING = "cooling"
+    DRYING = "drying"
+    FAN = "fan"
+
 _mod("homeassistant.components.climate",
      FAN_AUTO="auto",
      FAN_DIFFUSE="diffuse",
@@ -109,6 +117,7 @@ _mod("homeassistant.components.climate",
      SWING_VERTICAL="vertical",
      ClimateEntity=_Stub,
      ClimateEntityFeature=_ClimateEntityFeature,
+     HVACAction=_HVACAction,
      HVACMode=_HVACMode)
 
 # ── homeassistant.components.infrared ────────────────────────────────────
