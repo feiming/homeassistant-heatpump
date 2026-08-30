@@ -39,9 +39,15 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    CONF_CONTROL_DEADBAND,
+    CONF_CONTROL_STRATEGY,
     CONF_INFRARED_ENTITY_ID,
     CONF_MODEL,
     CONF_TEMPERATURE_SENSOR_ID,
+    CONTROL_NONE,
+    CONTROL_POWER,
+    DEFAULT_CONTROL_DEADBAND,
+    DEFAULT_CONTROL_STRATEGY,
     DOMAIN,
 )
 from .ir import create_model
@@ -171,6 +177,19 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         self._temperature_sensor_entity_id = entry.options.get(
             CONF_TEMPERATURE_SENSOR_ID
         )
+        self._control_strategy = entry.options.get(
+            CONF_CONTROL_STRATEGY, DEFAULT_CONTROL_STRATEGY
+        )
+        try:
+            self._control_deadband = float(
+                entry.options.get(CONF_CONTROL_DEADBAND, DEFAULT_CONTROL_DEADBAND)
+            )
+        except (ValueError, TypeError):
+            self._control_deadband = DEFAULT_CONTROL_DEADBAND
+
+        # False while the feedback loop is holding the unit off/idle because the
+        # target has been reached. Always True when no control strategy applies.
+        self._demand_active = True
 
         self._attr_unique_id = entry.entry_id
         from homeassistant.helpers.device_registry import DeviceInfo
@@ -210,31 +229,43 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
             )
 
         last = await self.async_get_last_state()
-        if last is None:
-            return
+        if last is not None:
+            if last.state in {m.value for m in HVACMode}:
+                self._attr_hvac_mode = HVACMode(last.state)
 
-        if last.state in {m.value for m in HVACMode}:
-            self._attr_hvac_mode = HVACMode(last.state)
+            attrs = last.attributes
+            if (temp := attrs.get(ATTR_TEMPERATURE)) is not None:
+                try:
+                    self._attr_target_temperature = float(temp)
+                except (ValueError, TypeError):
+                    pass
 
-        attrs = last.attributes
-        if (temp := attrs.get(ATTR_TEMPERATURE)) is not None:
-            try:
-                self._attr_target_temperature = float(temp)
-            except (ValueError, TypeError):
-                pass
+            if (fan := attrs.get("fan_mode")) and fan in self._attr_fan_modes:
+                self._attr_fan_mode = fan
 
-        if (fan := attrs.get("fan_mode")) and fan in self._attr_fan_modes:
-            self._attr_fan_mode = fan
+            if (swing := attrs.get("swing_mode")) and swing in self._attr_swing_modes:
+                self._attr_swing_mode = swing
 
-        if (swing := attrs.get("swing_mode")) and swing in self._attr_swing_modes:
-            self._attr_swing_mode = swing
+        # Re-evaluate now that the restored mode/target are in place.
+        self._evaluate_demand()
 
     @callback
     def _handle_temperature_sensor_change(
         self, event: Event[EventStateChangedData]
     ) -> None:
-        """Update current_temperature from the feedback sensor's new state."""
+        """Update current_temperature from the feedback sensor's new state.
+
+        When a control strategy is active this is also where the closed loop
+        runs: if the demand state flips (target reached, or drifted back out of
+        band) a fresh IR command is sent.
+        """
         self._update_current_temperature(event.data["new_state"])
+
+        was_active = self._demand_active
+        self._evaluate_demand()
+        if self._demand_active != was_active:
+            self.hass.async_create_task(self._send_for_demand())
+
         self.async_write_ha_state()
 
     def _update_current_temperature(self, state: State | None) -> None:
@@ -261,6 +292,11 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         """
         if self._attr_hvac_mode == HVACMode.OFF:
             return HVACAction.OFF
+
+        # Feedback loop is actively holding the unit off because the target
+        # has been reached (only happens in heat/cool modes).
+        if not self._demand_active:
+            return HVACAction.IDLE
 
         if (
             self._temperature_sensor_entity_id is None
@@ -303,7 +339,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new HVAC mode."""
         self._attr_hvac_mode = hvac_mode
-        await self._send_current_state()
+        await self._apply_state()
         self.async_write_ha_state()
 
     async def async_set_temperature(self, **kwargs: float) -> None:
@@ -311,45 +347,121 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         if (temp := kwargs.get(ATTR_TEMPERATURE)) is not None:
             self._attr_target_temperature = temp
             if self._attr_hvac_mode != HVACMode.OFF:
-                await self._send_current_state()
+                await self._apply_state()
             self.async_write_ha_state()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
         self._attr_fan_mode = fan_mode
         if self._attr_hvac_mode != HVACMode.OFF:
-            await self._send_current_state()
+            await self._apply_state()
         self.async_write_ha_state()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set swing mode."""
         self._attr_swing_mode = swing_mode
         if self._attr_hvac_mode != HVACMode.OFF:
-            await self._send_current_state()
+            await self._apply_state()
         self.async_write_ha_state()
 
     async def async_turn_on(self) -> None:
         """Turn on (restore last non-off mode or default to HEAT_COOL)."""
         if self._attr_hvac_mode == HVACMode.OFF:
             self._attr_hvac_mode = HVACMode.HEAT_COOL
-        await self._send_current_state()
+        await self._apply_state()
         self.async_write_ha_state()
 
     async def async_turn_off(self) -> None:
         """Turn off."""
         self._attr_hvac_mode = HVACMode.OFF
-        await self._send_current_state()
+        await self._apply_state()
         self.async_write_ha_state()
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _send_current_state(self) -> None:
+    _LOOP_MODES = (HVACMode.HEAT, HVACMode.COOL, HVACMode.HEAT_COOL)
+
+    @callback
+    def _evaluate_demand(self) -> None:
+        """Update ``_demand_active`` from the feedback sensor (hysteresis loop).
+
+        Only acts when a control strategy is configured, a feedback sensor is
+        available and the unit is in a heat/cool mode; otherwise demand is
+        always active and the unit is left to regulate itself.
+        """
+        if (
+            self._control_strategy == CONTROL_NONE
+            or self._temperature_sensor_entity_id is None
+            or self._attr_current_temperature is None
+            or self._attr_hvac_mode not in self._LOOP_MODES
+        ):
+            self._demand_active = True
+            return
+
+        current = self._attr_current_temperature
+        target = self._attr_target_temperature or self._model.min_temp
+        band = self._control_deadband
+
+        if self._attr_hvac_mode == HVACMode.HEAT:
+            if self._demand_active and current >= target + band:
+                self._demand_active = False
+            elif not self._demand_active and current <= target - band:
+                self._demand_active = True
+        elif self._attr_hvac_mode == HVACMode.COOL:
+            if self._demand_active and current <= target - band:
+                self._demand_active = False
+            elif not self._demand_active and current >= target + band:
+                self._demand_active = True
+        else:  # HEAT_COOL — single setpoint, unit picks the direction
+            if self._demand_active and abs(current - target) <= band:
+                self._demand_active = False
+            elif not self._demand_active and abs(current - target) >= band * 2:
+                self._demand_active = True
+
+    async def _apply_state(self) -> None:
+        """Re-evaluate the feedback loop and send the matching IR command."""
+        self._evaluate_demand()
+        await self._send_for_demand()
+
+    async def _send_for_demand(self) -> None:
+        """Send the active command, or the strategy's suspend command."""
+        if self._demand_active:
+            await self._send_current_state()
+        else:
+            await self._send_suspend_command()
+
+    async def _send_suspend_command(self) -> None:
+        """Tell the unit to stop, per the configured control strategy."""
+        # Power strategy, or HEAT_COOL where there is no "off direction" for a
+        # single setpoint: just switch the unit off (HA mode is left unchanged
+        # so demand can resume it).
+        if (
+            self._control_strategy == CONTROL_POWER
+            or self._attr_hvac_mode == HVACMode.HEAT_COOL
+        ):
+            await self._send_current_state(power_override=POWER_OFF)
+            return
+
+        # Setpoint strategy: park the setpoint at the extreme that stops output.
+        if self._attr_hvac_mode == HVACMode.HEAT:
+            await self._send_current_state(temp_override=int(self._model.min_temp))
+        else:  # COOL
+            await self._send_current_state(temp_override=int(self._model.max_temp))
+
+    async def _send_current_state(
+        self,
+        *,
+        power_override: int | None = None,
+        temp_override: int | None = None,
+    ) -> None:
         """Build the IR command from current state and send it."""
         power, ir_mode = _HA_HVAC_TO_IR.get(
             self._attr_hvac_mode, (POWER_OFF, MODE_AUTO)
         )
+        if power_override is not None:
+            power = power_override
 
         ir_fan = _HA_FAN_TO_IR.get(self._attr_fan_mode or FAN_AUTO, IR_FAN_AUTO)
 
@@ -357,7 +469,11 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
             self._attr_swing_mode or SWING_OFF, (VDIR_AUTO, HDIR_AUTO)
         )
 
-        temp = int(self._attr_target_temperature or self._model.min_temp)
+        temp = (
+            temp_override
+            if temp_override is not None
+            else int(self._attr_target_temperature or self._model.min_temp)
+        )
 
         try:
             command = self._model.get_command(

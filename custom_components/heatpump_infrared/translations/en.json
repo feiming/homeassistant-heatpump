@@ -23,13 +23,26 @@
     "step": {
       "init": {
         "title": "Heatpump Infrared options",
-        "description": "IR emitters send commands one-way, so there's no built-in confirmation that the unit responded. Optionally point this at a temperature sensor near the unit so its reading is shown as the current temperature — giving you feedback that the unit is actually reacting.",
+        "description": "IR emitters send commands one-way, so there's no built-in confirmation that the unit responded. Optionally point this at a temperature sensor near the unit so its reading is shown as the current temperature — giving you feedback that the unit is actually reacting, and, if you enable a control strategy below, so the integration can regulate the room against that sensor instead of the unit's own.",
         "data": {
-          "temperature_sensor_entity_id": "Feedback temperature sensor"
+          "temperature_sensor_entity_id": "Feedback temperature sensor",
+          "control_strategy": "Control strategy",
+          "control_deadband": "Deadband (°C)"
         },
         "data_description": {
-          "temperature_sensor_entity_id": "A sensor entity reporting the room temperature near this unit. Leave blank to disable."
+          "temperature_sensor_entity_id": "A sensor entity reporting the room temperature near this unit. Leave blank to disable.",
+          "control_strategy": "What to do when the feedback sensor reaches the target. Display only: never override the unit. Switch the unit off: send a power-off command, then power it back on when the room drifts out of band. Change the setpoint: push the setpoint to its minimum (heating) or maximum (cooling), then restore it. Requires a feedback sensor.",
+          "control_deadband": "How far past the target (in °C) the room must move before the unit is stopped, and how far back before it resumes."
         }
+      }
+    }
+  },
+  "selector": {
+    "control_strategy": {
+      "options": {
+        "none": "Display only",
+        "power": "Switch the unit off",
+        "setpoint": "Change the setpoint"
       }
     }
   }

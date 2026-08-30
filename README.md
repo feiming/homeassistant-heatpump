@@ -89,6 +89,20 @@ With a sensor configured, the entity also derives an `hvac_action` (`heating`/`c
 
 Leave the field blank to disable this (the default).
 
+### Regulating against the feedback sensor
+
+By default the sensor is display-only: the unit still regulates the room against its *own* internal sensor, which is often in a bad spot (behind the unit, up near the ceiling), so the room never quite lands on your target. With a feedback sensor configured you can pick a **Control strategy** in the same **Configure** dialog to close the loop against the sensor you actually care about:
+
+| Strategy | Behaviour |
+| --- | --- |
+| **Display only** (default) | Never overrides the unit. |
+| **Switch the unit off** | When the sensor passes the target, sends a power-off command; when the room drifts back past the deadband, powers it on again on the same mode. |
+| **Change the setpoint** | When the sensor passes the target, parks the unit's setpoint at its minimum (heating) or maximum (cooling); restores the real setpoint when the room drifts back. In `heat_cool` mode this falls back to power-off, since a single setpoint has no "off" direction. |
+
+The **Deadband** (default 0.5 °C) is the hysteresis: the room must move that far past the target before the unit is stopped, and that far back before it resumes, which prevents short-cycling. The loop re-evaluates on every feedback-sensor update.
+
+An outdoor temperature sensor does **not** help here — the gap being corrected is between the room and the unit's internal sensor, which outdoor temperature tells you nothing about.
+
 ## Usage
 
 The integration creates a standard `climate` entity. Use it from the UI, automations, or scripts exactly like any other climate entity:

@@ -20,6 +20,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     EntitySelector,
     EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -27,10 +30,17 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_CONTROL_DEADBAND,
+    CONF_CONTROL_STRATEGY,
     CONF_DEVICE_TYPE,
     CONF_INFRARED_ENTITY_ID,
     CONF_MODEL,
     CONF_TEMPERATURE_SENSOR_ID,
+    CONTROL_NONE,
+    CONTROL_POWER,
+    CONTROL_SETPOINT,
+    DEFAULT_CONTROL_DEADBAND,
+    DEFAULT_CONTROL_STRATEGY,
     DEVICE_TYPE_CLIMATE,
     DEVICE_TYPE_FAN,
     DOMAIN,
@@ -134,19 +144,52 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            # Drop the sensor key entirely when cleared, so downstream `.get()`
+            # sees no feedback sensor.
+            if not user_input.get(CONF_TEMPERATURE_SENSOR_ID):
+                user_input.pop(CONF_TEMPERATURE_SENSOR_ID, None)
             return self.async_create_entry(data=user_input)
 
+        options = self.config_entry.options
         schema = vol.Schema(
             {
                 vol.Optional(
                     CONF_TEMPERATURE_SENSOR_ID,
                     description={
-                        "suggested_value": self.config_entry.options.get(
-                            CONF_TEMPERATURE_SENSOR_ID
-                        )
+                        "suggested_value": options.get(CONF_TEMPERATURE_SENSOR_ID)
                     },
                 ): EntitySelector(
                     EntitySelectorConfig(domain="sensor", device_class="temperature")
+                ),
+                vol.Required(
+                    CONF_CONTROL_STRATEGY,
+                    default=options.get(
+                        CONF_CONTROL_STRATEGY, DEFAULT_CONTROL_STRATEGY
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            SelectOptionDict(value=CONTROL_NONE, label="Display only"),
+                            SelectOptionDict(
+                                value=CONTROL_POWER, label="Switch the unit off"
+                            ),
+                            SelectOptionDict(
+                                value=CONTROL_SETPOINT, label="Change the setpoint"
+                            ),
+                        ],
+                        mode=SelectSelectorMode.LIST,
+                        translation_key=CONF_CONTROL_STRATEGY,
+                    )
+                ),
+                vol.Required(
+                    CONF_CONTROL_DEADBAND,
+                    default=options.get(
+                        CONF_CONTROL_DEADBAND, DEFAULT_CONTROL_DEADBAND
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0.1, max=5.0, step=0.1, mode=NumberSelectorMode.BOX
+                    )
                 ),
             }
         )

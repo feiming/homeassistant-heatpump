@@ -148,10 +148,15 @@ _mod("homeassistant.helpers.entity_registry", async_get=lambda hass: None)
 _mod("homeassistant.helpers.selector",
      EntitySelector=_Stub,
      EntitySelectorConfig=_Stub,
+     NumberSelector=_Stub,
+     NumberSelectorConfig=_Stub,
+     NumberSelectorMode=type("NumberSelectorMode", (), {"BOX": "box", "SLIDER": "slider"}),
      SelectOptionDict=dict,
      SelectSelector=_Stub,
      SelectSelectorConfig=_Stub,
-     SelectSelectorMode=type("SelectSelectorMode", (), {"DROPDOWN": "dropdown"}))
+     SelectSelectorMode=type(
+         "SelectSelectorMode", (), {"DROPDOWN": "dropdown", "LIST": "list"}
+     ))
 _mod("homeassistant.helpers")
 
 # ── homeassistant (root) ─────────────────────────────────────────────────
