@@ -89,13 +89,19 @@ class _ClimateEntityFeature:
     TURN_ON = 8
     TURN_OFF = 16
 
-class _HVACMode:
+import enum
+
+
+class _HVACMode(str, enum.Enum):
     OFF = "off"
     HEAT = "heat"
     COOL = "cool"
     DRY = "dry"
     FAN_ONLY = "fan_only"
     HEAT_COOL = "heat_cool"
+
+    def __str__(self):
+        return self.value
 
 class _HVACAction:
     OFF = "off"

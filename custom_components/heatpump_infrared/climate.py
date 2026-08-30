@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from homeassistant.components.climate import (
     FAN_AUTO,
@@ -40,13 +41,19 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     CONF_CONTROL_DEADBAND,
+    CONF_CONTROL_INTERVAL,
+    CONF_CONTROL_MAX_OFFSET,
     CONF_CONTROL_STRATEGY,
     CONF_INFRARED_ENTITY_ID,
     CONF_MODEL,
     CONF_TEMPERATURE_SENSOR_ID,
     CONTROL_NONE,
+    CONTROL_OFFSET,
     CONTROL_POWER,
+    CONTROL_SETPOINT,
     DEFAULT_CONTROL_DEADBAND,
+    DEFAULT_CONTROL_INTERVAL,
+    DEFAULT_CONTROL_MAX_OFFSET,
     DEFAULT_CONTROL_STRATEGY,
     DOMAIN,
 )
@@ -76,6 +83,12 @@ from .ir.base import (
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
+
+# Seam for tests — monotonic clock used to rate-limit offset adjustments.
+_monotonic = time.monotonic
+
+# °C the offset strategy moves the setpoint by on each adjustment.
+_OFFSET_STEP = 1.0
 
 # Tolerance (°C) around the target before the feedback-sensor heuristic
 # considers the target reached and reports IDLE instead of HEATING/COOLING.
@@ -123,6 +136,14 @@ async def async_setup_entry(
     model = create_model(entry.data[CONF_MODEL])
     infrared_entity_id = entry.data[CONF_INFRARED_ENTITY_ID]
     async_add_entities([HeatpumpIRClimate(entry, model, infrared_entity_id)])
+
+
+def _as_float(value: object, default: float) -> float:
+    """Coerce an options value to float, falling back to a default."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return default
 
 
 def _fan_modes_for_model(model: HeatpumpIRBase) -> list[str]:
@@ -180,16 +201,25 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         self._control_strategy = entry.options.get(
             CONF_CONTROL_STRATEGY, DEFAULT_CONTROL_STRATEGY
         )
-        try:
-            self._control_deadband = float(
-                entry.options.get(CONF_CONTROL_DEADBAND, DEFAULT_CONTROL_DEADBAND)
+        self._control_deadband = _as_float(
+            entry.options.get(CONF_CONTROL_DEADBAND), DEFAULT_CONTROL_DEADBAND
+        )
+        self._control_max_offset = _as_float(
+            entry.options.get(CONF_CONTROL_MAX_OFFSET), DEFAULT_CONTROL_MAX_OFFSET
+        )
+        self._control_interval = (
+            _as_float(
+                entry.options.get(CONF_CONTROL_INTERVAL), DEFAULT_CONTROL_INTERVAL
             )
-        except (ValueError, TypeError):
-            self._control_deadband = DEFAULT_CONTROL_DEADBAND
+            * 60
+        )
 
-        # False while the feedback loop is holding the unit off/idle because the
-        # target has been reached. Always True when no control strategy applies.
+        # False while a stop/setpoint strategy is holding the unit off because
+        # the target has been reached. Always True for the other strategies.
         self._demand_active = True
+        # Learned bias (°C) the offset strategy applies to the setpoint.
+        self._control_offset = 0.0
+        self._last_offset_adjust: float | None = None
 
         self._attr_unique_id = entry.entry_id
         from homeassistant.helpers.device_registry import DeviceInfo
@@ -246,8 +276,18 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
             if (swing := attrs.get("swing_mode")) and swing in self._attr_swing_modes:
                 self._attr_swing_mode = swing
 
+            if (off := attrs.get("control_offset")) is not None:
+                self._control_offset = _as_float(off, 0.0)
+
         # Re-evaluate now that the restored mode/target are in place.
         self._evaluate_demand()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, float] | None:
+        """Expose the learned setpoint bias while the offset strategy is active."""
+        if self._control_strategy == CONTROL_OFFSET:
+            return {"control_offset": round(self._control_offset, 1)}
+        return None
 
     @callback
     def _handle_temperature_sensor_change(
@@ -255,16 +295,21 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
     ) -> None:
         """Update current_temperature from the feedback sensor's new state.
 
-        When a control strategy is active this is also where the closed loop
-        runs: if the demand state flips (target reached, or drifted back out of
-        band) a fresh IR command is sent.
+        This is also where the closed loop runs. For the stop/setpoint
+        strategies a fresh command is sent whenever demand flips; for the
+        offset strategy the setpoint bias is nudged and re-sent when the
+        rounded setpoint changes.
         """
         self._update_current_temperature(event.data["new_state"])
 
-        was_active = self._demand_active
-        self._evaluate_demand()
-        if self._demand_active != was_active:
-            self.hass.async_create_task(self._send_for_demand())
+        if self._control_strategy in (CONTROL_POWER, CONTROL_SETPOINT):
+            was_active = self._demand_active
+            self._evaluate_demand()
+            if self._demand_active != was_active:
+                self.hass.async_create_task(self._send_for_demand())
+        elif self._control_strategy == CONTROL_OFFSET:
+            if self._adjust_offset():
+                self.hass.async_create_task(self._send_current_state())
 
         self.async_write_ha_state()
 
@@ -338,6 +383,10 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new HVAC mode."""
+        if hvac_mode != self._attr_hvac_mode:
+            # The offset bias is direction-specific; start fresh on a mode change.
+            self._control_offset = 0.0
+            self._last_offset_adjust = None
         self._attr_hvac_mode = hvac_mode
         await self._apply_state()
         self.async_write_ha_state()
@@ -392,7 +441,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         always active and the unit is left to regulate itself.
         """
         if (
-            self._control_strategy == CONTROL_NONE
+            self._control_strategy not in (CONTROL_POWER, CONTROL_SETPOINT)
             or self._temperature_sensor_entity_id is None
             or self._attr_current_temperature is None
             or self._attr_hvac_mode not in self._LOOP_MODES
@@ -419,6 +468,60 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
                 self._demand_active = False
             elif not self._demand_active and abs(current - target) >= band * 2:
                 self._demand_active = True
+
+    @callback
+    def _adjust_offset(self) -> bool:
+        """Nudge the learned setpoint bias toward the target (offset strategy).
+
+        Runs at most once per configured interval so the room has time to
+        respond. Returns True when the rounded setpoint we would send has
+        changed and an IR command should be re-sent.
+        """
+        if (
+            self._temperature_sensor_entity_id is None
+            or self._attr_current_temperature is None
+            or self._attr_hvac_mode not in self._LOOP_MODES
+        ):
+            return False
+
+        before = self._compensated_setpoint()
+
+        current = self._attr_current_temperature
+        target = self._attr_target_temperature or self._model.min_temp
+        band = self._control_deadband
+        now = _monotonic()
+
+        if (
+            self._last_offset_adjust is None
+            or now - self._last_offset_adjust >= self._control_interval
+        ):
+            too_cold = current < target - band
+            too_warm = current > target + band
+            if self._attr_hvac_mode == HVACMode.COOL:
+                # Higher offset → lower setpoint → more cooling.
+                step = _OFFSET_STEP if too_warm else -_OFFSET_STEP if too_cold else 0.0
+            else:  # HEAT / HEAT_COOL: higher offset → higher setpoint → more heat.
+                step = _OFFSET_STEP if too_cold else -_OFFSET_STEP if too_warm else 0.0
+
+            if step:
+                self._control_offset = max(
+                    -self._control_max_offset,
+                    min(self._control_max_offset, self._control_offset + step),
+                )
+                self._last_offset_adjust = now
+
+        return self._compensated_setpoint() != before
+
+    def _compensated_setpoint(self) -> int:
+        """Target temperature with the offset bias applied, clamped to the model."""
+        target = self._attr_target_temperature or self._model.min_temp
+        raw = (
+            target - self._control_offset
+            if self._attr_hvac_mode == HVACMode.COOL
+            else target + self._control_offset
+        )
+        clamped = max(self._model.min_temp, min(self._model.max_temp, raw))
+        return int(round(clamped))
 
     async def _apply_state(self) -> None:
         """Re-evaluate the feedback loop and send the matching IR command."""
@@ -469,11 +572,15 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
             self._attr_swing_mode or SWING_OFF, (VDIR_AUTO, HDIR_AUTO)
         )
 
-        temp = (
-            temp_override
-            if temp_override is not None
-            else int(self._attr_target_temperature or self._model.min_temp)
-        )
+        if temp_override is not None:
+            temp = temp_override
+        elif (
+            self._control_strategy == CONTROL_OFFSET
+            and self._attr_hvac_mode in self._LOOP_MODES
+        ):
+            temp = self._compensated_setpoint()
+        else:
+            temp = int(self._attr_target_temperature or self._model.min_temp)
 
         try:
             command = self._model.get_command(

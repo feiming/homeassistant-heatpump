@@ -27,12 +27,16 @@
         "data": {
           "temperature_sensor_entity_id": "Feedback temperature sensor",
           "control_strategy": "Control strategy",
-          "control_deadband": "Deadband (°C)"
+          "control_deadband": "Deadband (°C)",
+          "control_max_offset": "Max offset (°C)",
+          "control_interval": "Adjustment interval (minutes)"
         },
         "data_description": {
           "temperature_sensor_entity_id": "A sensor entity reporting the room temperature near this unit. Leave blank to disable.",
-          "control_strategy": "What to do when the feedback sensor reaches the target. Display only: never override the unit. Switch the unit off: send a power-off command, then power it back on when the room drifts out of band. Change the setpoint: push the setpoint to its minimum (heating) or maximum (cooling), then restore it. Requires a feedback sensor.",
-          "control_deadband": "How far past the target (in °C) the room must move before the unit is stopped, and how far back before it resumes."
+          "control_strategy": "How the feedback sensor influences the unit. Display only: never override the unit. Offset compensation: keep the unit running but gradually bias the setpoint it's given so the room reaches your target instead of the unit's own sensor. Switch the unit off: send a power-off command when the target is reached, power back on when the room drifts out of band. Change the setpoint: slam the setpoint to its minimum (heating) or maximum (cooling) to stop the unit, then restore it. All except Display only require a feedback sensor.",
+          "control_deadband": "How far past the target (in °C) the room must move before the integration reacts.",
+          "control_max_offset": "The largest bias offset compensation may apply to the setpoint, in either direction.",
+          "control_interval": "How long to wait between offset adjustments, giving the room time to respond."
         }
       }
     }
@@ -41,6 +45,7 @@
     "control_strategy": {
       "options": {
         "none": "Display only",
+        "offset": "Offset compensation",
         "power": "Switch the unit off",
         "setpoint": "Change the setpoint"
       }

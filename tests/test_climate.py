@@ -16,8 +16,11 @@ from custom_components.heatpump_infrared import climate as climate_mod
 from custom_components.heatpump_infrared.climate import HeatpumpIRClimate
 from custom_components.heatpump_infrared.const import (
     CONF_CONTROL_DEADBAND,
+    CONF_CONTROL_INTERVAL,
+    CONF_CONTROL_MAX_OFFSET,
     CONF_CONTROL_STRATEGY,
     CONF_TEMPERATURE_SENSOR_ID,
+    CONTROL_OFFSET,
     CONTROL_POWER,
     CONTROL_SETPOINT,
 )
@@ -81,6 +84,8 @@ def _make_climate(
     initial_sensor_state=None,
     strategy=None,
     deadband=None,
+    max_offset=None,
+    interval=None,
 ):
     options = {}
     if sensor_entity_id:
@@ -89,6 +94,10 @@ def _make_climate(
         options[CONF_CONTROL_STRATEGY] = strategy
     if deadband is not None:
         options[CONF_CONTROL_DEADBAND] = deadband
+    if max_offset is not None:
+        options[CONF_CONTROL_MAX_OFFSET] = max_offset
+    if interval is not None:
+        options[CONF_CONTROL_INTERVAL] = interval
     entry = FakeConfigEntry(options=options)
     entity = HeatpumpIRClimate(entry, FakeModel(), "infrared.test_emitter")
 
@@ -308,3 +317,112 @@ class TestFeedbackControlStrategies:
         self._emit(captured, 21)
         assert entity._demand_active is False
         assert entity.hvac_action == climate_mod.HVACAction.IDLE
+
+
+class TestOffsetCompensation:
+    """The offset strategy biases the setpoint so the room tracks the target."""
+
+    def _setup(self, monkeypatch, mode, target, start_temp, deadband=0.5,
+               max_offset=3, interval=10):
+        self.clock = [0.0]
+        monkeypatch.setattr(climate_mod, "_monotonic", lambda: self.clock[0])
+        captured = {}
+
+        def fake_track(hass, entity_ids, cb):
+            captured["cb"] = cb
+            return lambda: None
+
+        monkeypatch.setattr(
+            climate_mod, "async_track_state_change_event", fake_track
+        )
+        entity = _make_climate(
+            "sensor.room",
+            initial_sensor_state=str(start_temp),
+            strategy=CONTROL_OFFSET,
+            deadband=deadband,
+            max_offset=max_offset,
+            interval=interval,
+        )
+        _run(entity.async_added_to_hass())
+        entity._attr_hvac_mode = mode
+        entity._attr_target_temperature = target
+        entity._model.commands.clear()
+        return entity, captured
+
+    def _emit(self, captured, temp):
+        captured["cb"](climate_mod.Event({"new_state": FakeState(str(temp))}))
+
+    def _tick(self, minutes):
+        self.clock[0] += minutes * 60
+
+    def test_cooling_biases_setpoint_down_when_room_too_warm(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.COOL, 25, 25)
+
+        self._emit(captured, 27)  # too warm, first adjust is always allowed
+        assert entity._control_offset == 1.0
+        assert entity._model.commands[-1]["temp"] == 24
+
+        self._emit(captured, 27)  # within interval → no further change
+        assert entity._control_offset == 1.0
+
+        self._tick(10)
+        self._emit(captured, 27)  # still too warm → bias further
+        assert entity._control_offset == 2.0
+        assert entity._model.commands[-1]["temp"] == 23
+
+    def test_bias_backs_off_when_room_overshoots(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.COOL, 25, 25)
+        self._emit(captured, 27)
+        assert entity._control_offset == 1.0
+
+        self._tick(10)
+        self._emit(captured, 23)  # now below target - deadband → ease off
+        assert entity._control_offset == 0.0
+        assert entity._model.commands[-1]["temp"] == 25
+
+    def test_offset_is_capped_at_max(self, monkeypatch):
+        entity, captured = self._setup(
+            monkeypatch, HVACMode.COOL, 25, 25, max_offset=2
+        )
+        for _ in range(5):
+            self._emit(captured, 30)
+            self._tick(10)
+        assert entity._control_offset == 2.0
+        assert entity._model.commands[-1]["temp"] == 23
+
+    def test_heating_biases_setpoint_up_when_room_too_cold(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.HEAT, 20, 20)
+        self._emit(captured, 18)
+        assert entity._control_offset == 1.0
+        assert entity._model.commands[-1]["temp"] == 21
+
+    def test_no_adjustment_inside_deadband(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.COOL, 25, 25)
+        self._emit(captured, 25.2)
+        assert entity._control_offset == 0.0
+        assert entity._model.commands == []
+
+    def test_mode_change_resets_offset(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.COOL, 25, 25)
+        self._emit(captured, 28)
+        assert entity._control_offset == 1.0
+        _run(entity.async_set_hvac_mode(HVACMode.HEAT))
+        assert entity._control_offset == 0.0
+
+    def test_offset_exposed_and_restored(self, monkeypatch):
+        entity, captured = self._setup(monkeypatch, HVACMode.COOL, 25, 25)
+        self._emit(captured, 28)
+        assert entity.extra_state_attributes == {"control_offset": 1.0}
+
+        restored = _make_climate(
+            "sensor.room", initial_sensor_state="25", strategy=CONTROL_OFFSET
+        )
+
+        async def fake_last_state():
+            return climate_mod.State(
+                "cool", {"temperature": 25, "control_offset": 2.0}
+            )
+
+        restored.async_get_last_state = fake_last_state
+        _run(restored.async_added_to_hass())
+        assert restored._control_offset == 2.0

@@ -31,15 +31,20 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_CONTROL_DEADBAND,
+    CONF_CONTROL_INTERVAL,
+    CONF_CONTROL_MAX_OFFSET,
     CONF_CONTROL_STRATEGY,
     CONF_DEVICE_TYPE,
     CONF_INFRARED_ENTITY_ID,
     CONF_MODEL,
     CONF_TEMPERATURE_SENSOR_ID,
     CONTROL_NONE,
+    CONTROL_OFFSET,
     CONTROL_POWER,
     CONTROL_SETPOINT,
     DEFAULT_CONTROL_DEADBAND,
+    DEFAULT_CONTROL_INTERVAL,
+    DEFAULT_CONTROL_MAX_OFFSET,
     DEFAULT_CONTROL_STRATEGY,
     DEVICE_TYPE_CLIMATE,
     DEVICE_TYPE_FAN,
@@ -171,6 +176,10 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
                         options=[
                             SelectOptionDict(value=CONTROL_NONE, label="Display only"),
                             SelectOptionDict(
+                                value=CONTROL_OFFSET,
+                                label="Offset compensation",
+                            ),
+                            SelectOptionDict(
                                 value=CONTROL_POWER, label="Switch the unit off"
                             ),
                             SelectOptionDict(
@@ -189,6 +198,26 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
                 ): NumberSelector(
                     NumberSelectorConfig(
                         min=0.1, max=5.0, step=0.1, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Required(
+                    CONF_CONTROL_MAX_OFFSET,
+                    default=options.get(
+                        CONF_CONTROL_MAX_OFFSET, DEFAULT_CONTROL_MAX_OFFSET
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1.0, max=10.0, step=0.5, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Required(
+                    CONF_CONTROL_INTERVAL,
+                    default=options.get(
+                        CONF_CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1, max=60, step=1, mode=NumberSelectorMode.BOX
                     )
                 ),
             }

@@ -96,10 +96,15 @@ By default the sensor is display-only: the unit still regulates the room against
 | Strategy | Behaviour |
 | --- | --- |
 | **Display only** (default) | Never overrides the unit. |
+| **Offset compensation** | Keeps the unit running but gradually biases the setpoint it's given. If the room stays short of your target, the integration nudges the setpoint by 1 °C every *adjustment interval* (up to *max offset*) so the unit works harder; when the room overshoots, it winds the bias back. Best for everyday use — smooth, no on/off cycling. |
 | **Switch the unit off** | When the sensor passes the target, sends a power-off command; when the room drifts back past the deadband, powers it on again on the same mode. |
 | **Change the setpoint** | When the sensor passes the target, parks the unit's setpoint at its minimum (heating) or maximum (cooling); restores the real setpoint when the room drifts back. In `heat_cool` mode this falls back to power-off, since a single setpoint has no "off" direction. |
 
-The **Deadband** (default 0.5 °C) is the hysteresis: the room must move that far past the target before the unit is stopped, and that far back before it resumes, which prevents short-cycling. The loop re-evaluates on every feedback-sensor update.
+Settings:
+
+- **Deadband** (default 0.5 °C) — how far past the target the room must move before the integration reacts. For the stop/setpoint strategies this is the hysteresis that prevents short-cycling.
+- **Max offset** (default 3 °C) — the largest bias *Offset compensation* will apply, in either direction.
+- **Adjustment interval** (default 10 min) — how long *Offset compensation* waits between nudges, so the room has time to respond. The learned bias is shown as the `control_offset` attribute and survives restarts.
 
 An outdoor temperature sensor does **not** help here — the gap being corrected is between the room and the unit's internal sensor, which outdoor temperature tells you nothing about.
 
