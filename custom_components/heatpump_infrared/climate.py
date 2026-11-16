@@ -15,10 +15,10 @@ from homeassistant.components.climate import (
     SWING_HORIZONTAL,
     SWING_OFF,
     SWING_VERTICAL,
-    ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
+    RestoreClimate,
 )
 from homeassistant.components.infrared import InfraredEmitterConsumerEntity
 from homeassistant.config_entries import ConfigEntry
@@ -37,7 +37,6 @@ from homeassistant.core import (
 )
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     CONF_CONTROL_DEADBAND,
@@ -162,13 +161,13 @@ def _fan_modes_for_model(model: HeatpumpIRBase) -> list[str]:
     return speeds
 
 
-class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEntity):
+class HeatpumpIRClimate(InfraredEmitterConsumerEntity, RestoreClimate):
     """Climate entity controlling a heat pump via an infrared emitter."""
 
     _attr_has_entity_name = True
     _attr_name = None
     _attr_assumed_state = True
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.FAN_MODE
@@ -237,10 +236,10 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
 
         # Sensible defaults — overwritten by restore in async_added_to_hass
         self._attr_hvac_mode = HVACMode.OFF
-        self._attr_target_temperature = 22.0
+        self._attr_native_target_temperature = 22.0
         self._attr_fan_mode = FAN_AUTO
         self._attr_swing_mode = SWING_OFF
-        self._attr_current_temperature = None
+        self._attr_native_current_temperature = None
 
     async def async_added_to_hass(self) -> None:
         """Restore last known state when HA starts."""
@@ -264,11 +263,15 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
                 self._attr_hvac_mode = HVACMode(last.state)
 
             attrs = last.attributes
-            if (temp := attrs.get(ATTR_TEMPERATURE)) is not None:
-                try:
-                    self._attr_target_temperature = float(temp)
-                except (ValueError, TypeError):
-                    pass
+            # The stored temperatures come back converted to °C, whatever unit
+            # the system displays; out-of-range targets are dropped because the
+            # restored value is what gets sent to the unit.
+            climate_data = await self.async_get_last_climate_data(validate_range=True)
+            if (
+                climate_data is not None
+                and (temp := climate_data.native_target_temperature) is not None
+            ):
+                self._attr_native_target_temperature = float(round(temp))
 
             if (fan := attrs.get("fan_mode")) and fan in self._attr_fan_modes:
                 self._attr_fan_mode = fan
@@ -318,7 +321,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             return
         try:
-            self._attr_current_temperature = float(state.state)
+            self._attr_native_current_temperature = float(state.state)
         except ValueError:
             _LOGGER.warning(
                 "Feedback sensor %s has a non-numeric state: %s",
@@ -345,12 +348,12 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
 
         if (
             self._temperature_sensor_entity_id is None
-            or self._attr_current_temperature is None
+            or self._attr_native_current_temperature is None
         ):
             return None
 
-        current = self._attr_current_temperature
-        target = self._attr_target_temperature
+        current = self._attr_native_current_temperature
+        target = self._attr_native_target_temperature
 
         if self._attr_hvac_mode == HVACMode.COOL:
             return (
@@ -394,7 +397,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
     async def async_set_temperature(self, **kwargs: float) -> None:
         """Set target temperature."""
         if (temp := kwargs.get(ATTR_TEMPERATURE)) is not None:
-            self._attr_target_temperature = temp
+            self._attr_native_target_temperature = temp
             if self._attr_hvac_mode != HVACMode.OFF:
                 await self._apply_state()
             self.async_write_ha_state()
@@ -443,14 +446,14 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         if (
             self._control_strategy not in (CONTROL_POWER, CONTROL_SETPOINT)
             or self._temperature_sensor_entity_id is None
-            or self._attr_current_temperature is None
+            or self._attr_native_current_temperature is None
             or self._attr_hvac_mode not in self._LOOP_MODES
         ):
             self._demand_active = True
             return
 
-        current = self._attr_current_temperature
-        target = self._attr_target_temperature or self._model.min_temp
+        current = self._attr_native_current_temperature
+        target = self._attr_native_target_temperature or self._model.min_temp
         band = self._control_deadband
 
         if self._attr_hvac_mode == HVACMode.HEAT:
@@ -479,15 +482,15 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         """
         if (
             self._temperature_sensor_entity_id is None
-            or self._attr_current_temperature is None
+            or self._attr_native_current_temperature is None
             or self._attr_hvac_mode not in self._LOOP_MODES
         ):
             return False
 
         before = self._compensated_setpoint()
 
-        current = self._attr_current_temperature
-        target = self._attr_target_temperature or self._model.min_temp
+        current = self._attr_native_current_temperature
+        target = self._attr_native_target_temperature or self._model.min_temp
         band = self._control_deadband
         now = _monotonic()
 
@@ -514,7 +517,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
 
     def _compensated_setpoint(self) -> int:
         """Target temperature with the offset bias applied, clamped to the model."""
-        target = self._attr_target_temperature or self._model.min_temp
+        target = self._attr_native_target_temperature or self._model.min_temp
         raw = (
             target - self._control_offset
             if self._attr_hvac_mode == HVACMode.COOL
@@ -580,7 +583,7 @@ class HeatpumpIRClimate(InfraredEmitterConsumerEntity, ClimateEntity, RestoreEnt
         ):
             temp = self._compensated_setpoint()
         else:
-            temp = int(self._attr_target_temperature or self._model.min_temp)
+            temp = int(self._attr_native_target_temperature or self._model.min_temp)
 
         try:
             command = self._model.get_command(

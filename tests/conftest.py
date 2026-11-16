@@ -66,20 +66,13 @@ class _ConfigEntry:
 
 class _ConfigFlow: pass
 class _ConfigFlowResult: pass
-class _OptionsFlowWithConfigEntry:
-    def __init__(self, config_entry):
-        self._config_entry = config_entry
-        self.options = dict(config_entry.options)
-
-    @property
-    def config_entry(self):
-        return self._config_entry
+class _OptionsFlowWithReload: pass
 
 _mod("homeassistant.config_entries",
      ConfigEntry=_ConfigEntry,
      ConfigFlow=_ConfigFlow,
      ConfigFlowResult=_ConfigFlowResult,
-     OptionsFlowWithConfigEntry=_OptionsFlowWithConfigEntry)
+     OptionsFlowWithReload=_OptionsFlowWithReload)
 
 # ── homeassistant.components.climate ─────────────────────────────────────
 class _ClimateEntityFeature:
@@ -111,6 +104,33 @@ class _HVACAction:
     DRYING = "drying"
     FAN = "fan"
 
+class _ClimateData:
+    def __init__(self, native_target_temperature):
+        self.native_target_temperature = native_target_temperature
+
+
+class _RestoreClimate(_Stub):
+    """Stands in for RestoreClimate (ClimateEntity + RestoreEntity)."""
+
+    async def async_get_last_state(self): return None
+
+    async def async_get_last_climate_data(self, *, validate_range=False):
+        last = await self.async_get_last_state()
+        if last is None:
+            return None
+        try:
+            temp = float(last.attributes.get("temperature"))
+        except (TypeError, ValueError):
+            temp = None
+        if (
+            temp is not None
+            and validate_range
+            and not self._attr_min_temp <= temp <= self._attr_max_temp
+        ):
+            temp = None
+        return _ClimateData(temp)
+
+
 _mod("homeassistant.components.climate",
      FAN_AUTO="auto",
      FAN_DIFFUSE="diffuse",
@@ -121,7 +141,7 @@ _mod("homeassistant.components.climate",
      SWING_HORIZONTAL="horizontal",
      SWING_OFF="off",
      SWING_VERTICAL="vertical",
-     ClimateEntity=_Stub,
+     RestoreClimate=_RestoreClimate,
      ClimateEntityFeature=_ClimateEntityFeature,
      HVACAction=_HVACAction,
      HVACMode=_HVACMode)
@@ -168,8 +188,8 @@ _mod("homeassistant.helpers")
 # ── homeassistant (root) ─────────────────────────────────────────────────
 _mod("homeassistant")
 
-# ── voluptuous ────────────────────────────────────────────────────────────
-vol = _mod("voluptuous")
+# ── probatio (HA's validation engine, replaced voluptuous) ────────────────
+vol = _mod("probatio")
 vol.Schema = lambda x, **kw: x
 vol.Required = lambda x, **kw: x
 vol.Optional = lambda x, **kw: x

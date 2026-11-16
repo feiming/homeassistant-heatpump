@@ -33,7 +33,7 @@ Control split-system heat pumps and air conditioners via IR blaster from Home As
 
 ## Requirements
 
-- Home Assistant 2024.1 or later
+- Home Assistant 2026.11 or later
 - The `infrared` integration enabled in Home Assistant (provides the IR blaster entity)
 - An IR blaster device supported by HA (e.g. Broadlink RM, ESPHome with IR transmitter)
 

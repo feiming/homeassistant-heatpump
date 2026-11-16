@@ -21,22 +21,19 @@ def _platforms_for_entry(entry: ConfigEntry) -> list[Platform]:
     return [Platform.CLIMATE]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up HeatpumpIR from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Set up HeatpumpIR from a config entry.
+
+    Option changes reload the entry through the options flow
+    (``OptionsFlowWithReload``), so no update listener is registered here.
+    """
     await hass.config_entries.async_forward_entry_setups(
         entry, _platforms_for_entry(entry)
     )
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    return True
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the entry when its options change."""
-    await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Unload a HeatpumpIR config entry."""
-    return await hass.config_entries.async_unload_platforms(
+    await hass.config_entries.async_unload_platforms_or_raise(
         entry, _platforms_for_entry(entry)
     )

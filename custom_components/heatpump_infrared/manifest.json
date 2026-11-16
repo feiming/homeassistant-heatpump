@@ -1,13 +1,15 @@
 {
   "domain": "heatpump_infrared",
   "name": "Heatpump Infrared",
+  "categories": ["climate.heat_pumps_air_conditioning"],
   "codeowners": [],
   "config_flow": true,
+  "connectivity": ["infrared"],
   "dependencies": ["infrared"],
   "documentation": "https://github.com/feiming/homeassistant-heatpump",
   "integration_type": "device",
   "iot_class": "assumed_state",
   "issue_tracker": "https://github.com/feiming/homeassistant-heatpump/issues",
   "requirements": ["infrared-protocols>=6.3.0"],
-  "version": "1.5.0"
+  "version": "1.6.0"
 }

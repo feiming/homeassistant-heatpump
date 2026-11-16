@@ -112,36 +112,36 @@ class TestTemperatureSensorFeedback:
     def test_no_sensor_configured_leaves_current_temperature_none(self):
         entity = _make_climate()
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature is None
+        assert entity._attr_native_current_temperature is None
 
     def test_initial_reading_is_applied_on_add(self):
         entity = _make_climate("sensor.living_room", initial_sensor_state="21.5")
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature == 21.5
+        assert entity._attr_native_current_temperature == 21.5
 
     def test_unavailable_initial_state_is_ignored(self):
         entity = _make_climate(
             "sensor.living_room", initial_sensor_state="unavailable"
         )
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature is None
+        assert entity._attr_native_current_temperature is None
 
     def test_unknown_initial_state_is_ignored(self):
         entity = _make_climate("sensor.living_room", initial_sensor_state="unknown")
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature is None
+        assert entity._attr_native_current_temperature is None
 
     def test_missing_sensor_entity_is_ignored(self):
         entity = _make_climate("sensor.does_not_exist")
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature is None
+        assert entity._attr_native_current_temperature is None
 
     def test_non_numeric_reading_is_ignored(self):
         entity = _make_climate(
             "sensor.living_room", initial_sensor_state="not-a-number"
         )
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature is None
+        assert entity._attr_native_current_temperature is None
 
     def test_subscribes_to_configured_sensor(self, monkeypatch):
         captured = {}
@@ -189,12 +189,12 @@ class TestTemperatureSensorFeedback:
 
         entity = _make_climate("sensor.living_room", initial_sensor_state="20.0")
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature == 20.0
+        assert entity._attr_native_current_temperature == 20.0
 
         event = climate_mod.Event({"new_state": FakeState("23.4")})
         captured["callback"](event)
 
-        assert entity._attr_current_temperature == 23.4
+        assert entity._attr_native_current_temperature == 23.4
 
     def test_state_change_to_unavailable_keeps_last_good_reading(self, monkeypatch):
         captured = {}
@@ -209,12 +209,12 @@ class TestTemperatureSensorFeedback:
 
         entity = _make_climate("sensor.living_room", initial_sensor_state="19.0")
         _run(entity.async_added_to_hass())
-        assert entity._attr_current_temperature == 19.0
+        assert entity._attr_native_current_temperature == 19.0
 
         event = climate_mod.Event({"new_state": FakeState("unavailable")})
         captured["callback"](event)
 
-        assert entity._attr_current_temperature == 19.0
+        assert entity._attr_native_current_temperature == 19.0
 
 
 from custom_components.heatpump_infrared.ir.base import POWER_OFF, POWER_ON
@@ -241,7 +241,7 @@ class TestFeedbackControlStrategies:
         )
         _run(entity.async_added_to_hass())
         entity._attr_hvac_mode = mode
-        entity._attr_target_temperature = target
+        entity._attr_native_target_temperature = target
         entity._model.commands.clear()
         return entity, captured
 
@@ -305,8 +305,8 @@ class TestFeedbackControlStrategies:
         entity = _make_climate(strategy=CONTROL_POWER)
         _run(entity.async_added_to_hass())
         entity._attr_hvac_mode = HVACMode.HEAT
-        entity._attr_target_temperature = 20
-        entity._attr_current_temperature = 25
+        entity._attr_native_target_temperature = 20
+        entity._attr_native_current_temperature = 25
         entity._evaluate_demand()
         assert entity._demand_active is True
 
@@ -345,7 +345,7 @@ class TestOffsetCompensation:
         )
         _run(entity.async_added_to_hass())
         entity._attr_hvac_mode = mode
-        entity._attr_target_temperature = target
+        entity._attr_native_target_temperature = target
         entity._model.commands.clear()
         return entity, captured
 

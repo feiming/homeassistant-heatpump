@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.components.infrared import (
     DOMAIN as INFRARED_DOMAIN,
@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlowWithConfigEntry,
+    OptionsFlowWithReload,
 )
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
@@ -62,7 +62,7 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> HeatpumpIROptionsFlow:
         """Return the options flow for this handler."""
-        return HeatpumpIROptionsFlow(config_entry)
+        return HeatpumpIROptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -112,15 +112,15 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
             for brand, model_id, display_name in all_models
         ]
 
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_MODEL): SelectSelector(
+                probatio.Required(CONF_MODEL): SelectSelector(
                     SelectSelectorConfig(
                         options=model_options,
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Required(CONF_INFRARED_ENTITY_ID): EntitySelector(
+                probatio.Required(CONF_INFRARED_ENTITY_ID): EntitySelector(
                     EntitySelectorConfig(
                         domain=INFRARED_DOMAIN,
                         include_entities=emitter_entity_ids,
@@ -136,12 +136,14 @@ class HeatpumpIRConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
+class HeatpumpIROptionsFlow(OptionsFlowWithReload):
     """Handle options for a HeatpumpIR config entry.
 
     Only exposes the optional feedback temperature sensor — IR emitters send
     "fire and forget" commands, so this sensor is the only way to see
     whether the unit is actually responding.
+
+    Saving changed options reloads the entry automatically.
     """
 
     async def async_step_init(
@@ -156,17 +158,12 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
             return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Optional(
-                    CONF_TEMPERATURE_SENSOR_ID,
-                    description={
-                        "suggested_value": options.get(CONF_TEMPERATURE_SENSOR_ID)
-                    },
-                ): EntitySelector(
+                probatio.Optional(CONF_TEMPERATURE_SENSOR_ID): EntitySelector(
                     EntitySelectorConfig(domain="sensor", device_class="temperature")
                 ),
-                vol.Required(
+                probatio.Required(
                     CONF_CONTROL_STRATEGY,
                     default=options.get(
                         CONF_CONTROL_STRATEGY, DEFAULT_CONTROL_STRATEGY
@@ -190,7 +187,7 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
                         translation_key=CONF_CONTROL_STRATEGY,
                     )
                 ),
-                vol.Required(
+                probatio.Required(
                     CONF_CONTROL_DEADBAND,
                     default=options.get(
                         CONF_CONTROL_DEADBAND, DEFAULT_CONTROL_DEADBAND
@@ -200,7 +197,7 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
                         min=0.1, max=5.0, step=0.1, mode=NumberSelectorMode.BOX
                     )
                 ),
-                vol.Required(
+                probatio.Required(
                     CONF_CONTROL_MAX_OFFSET,
                     default=options.get(
                         CONF_CONTROL_MAX_OFFSET, DEFAULT_CONTROL_MAX_OFFSET
@@ -210,7 +207,7 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
                         min=1.0, max=10.0, step=0.5, mode=NumberSelectorMode.BOX
                     )
                 ),
-                vol.Required(
+                probatio.Required(
                     CONF_CONTROL_INTERVAL,
                     default=options.get(
                         CONF_CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL
@@ -223,4 +220,10 @@ class HeatpumpIROptionsFlow(OptionsFlowWithConfigEntry):
             }
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
+                {CONF_TEMPERATURE_SENSOR_ID: options.get(CONF_TEMPERATURE_SENSOR_ID)},
+            ),
+        )
